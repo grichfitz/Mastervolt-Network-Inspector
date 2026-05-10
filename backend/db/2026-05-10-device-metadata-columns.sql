@@ -1,0 +1,2 @@
+-- Superseded by backend/db/schema.sql (multi-yacht schema).
+-- Use yachts + devices columns from schema.sql for new installs.
