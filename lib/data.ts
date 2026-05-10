@@ -330,3 +330,173 @@ export async function getYachtExplorerStats(yacht: Yacht): Promise<{ deviceCount
   const telemetryVariableCount = devices.reduce((sum, d) => sum + countTelemetryVariables(d), 0);
   return { deviceCount: devices.length, telemetryVariableCount };
 }
+
+export type GraphDeviceOption = {
+  id: string;
+  busId: number;
+  name: string;
+};
+
+export type GraphMetricOption = {
+  metricKey: string;
+  sampleCount: number;
+  firstSeen: string;
+  lastSeen: string;
+};
+
+export type TelemetryPoint = {
+  ts: string;
+  value: number;
+};
+
+export type TelemetryCurrentPoint = {
+  ts: string;
+  value: number;
+} | null;
+
+function isGraphableMetric(metricKey: string): boolean {
+  const lower = metricKey.toLowerCase();
+  if (lower.startsWith("installer_menu.")) return false;
+  if (lower.startsWith("debug.")) return false;
+  if (lower.startsWith("diskstatus.")) return false;
+  if (lower.endsWith(".date")) return false;
+  if (lower.endsWith(".time")) return false;
+
+  const blocked = new Set([
+    "general.date",
+    "general.time",
+    "general.device_name",
+    "general.serial_number",
+    "general.product_name",
+    "general.software_version",
+    "general.firmware_version",
+    "general.ip_address",
+    "general.mac_address"
+  ]);
+
+  return !blocked.has(lower);
+}
+
+export async function getTelemetryGraphDevicesForYacht(yacht: Yacht): Promise<GraphDeviceOption[]> {
+  if (useJsonlFallback()) {
+    const devices = await getDevicesForYacht(yacht);
+    return devices.map((device) => ({
+      id: String(device.busId),
+      busId: device.busId,
+      name: device.summary.deviceName
+    }));
+  }
+
+  const supabase = getSupabaseClient();
+  const { data, error } = await supabase
+    .from("devices")
+    .select("id,bus_id,display_name")
+    .eq("yacht_id", yacht.id)
+    .order("bus_id", { ascending: true });
+  if (error) throw new Error(`Failed loading graph devices: ${error.message}`);
+
+  return (data ?? []).map((row) => ({
+    id: String(row.id),
+    busId: toBusIdFromRow(row.bus_id),
+    name: row.display_name || `Device ${toBusIdFromRow(row.bus_id)}`
+  }));
+}
+
+export async function getGraphableMetricsForDevice(yachtId: string, deviceId: string): Promise<GraphMetricOption[]> {
+  if (!yachtId || !deviceId || useJsonlFallback()) return [];
+
+  const supabase = getSupabaseClient();
+  const { data, error } = await supabase
+    .from("telemetry_timeseries")
+    .select("metric_key,ts")
+    .eq("yacht_id", yachtId)
+    .eq("device_id", deviceId)
+    .not("numeric_value", "is", null)
+    .order("ts", { ascending: false })
+    .limit(100000);
+
+  if (error) throw new Error(`Failed loading graphable metrics: ${error.message}`);
+
+  const grouped = new Map<string, GraphMetricOption>();
+  for (const row of data ?? []) {
+    const metricKey = String(row.metric_key);
+    if (!isGraphableMetric(metricKey)) continue;
+
+    const existing = grouped.get(metricKey);
+    const ts = String(row.ts);
+    if (!existing) {
+      grouped.set(metricKey, {
+        metricKey,
+        sampleCount: 1,
+        firstSeen: ts,
+        lastSeen: ts
+      });
+    } else {
+      existing.sampleCount += 1;
+      if (ts < existing.firstSeen) existing.firstSeen = ts;
+      if (ts > existing.lastSeen) existing.lastSeen = ts;
+    }
+  }
+
+  return Array.from(grouped.values()).sort((a, b) => a.metricKey.localeCompare(b.metricKey));
+}
+
+export async function getTelemetryHistory(params: {
+  yachtId: string;
+  deviceId: string;
+  metricKey: string;
+  start: string;
+  end: string;
+  limit?: number;
+}): Promise<TelemetryPoint[]> {
+  if (useJsonlFallback()) return [];
+
+  const { yachtId, deviceId, metricKey, start, end } = params;
+  if (!yachtId || !deviceId || !metricKey || !isGraphableMetric(metricKey)) return [];
+
+  const supabase = getSupabaseClient();
+  const limit = Math.min(Math.max(params.limit ?? 5000, 1), 5000);
+  const { data, error } = await supabase
+    .from("telemetry_timeseries")
+    .select("ts,numeric_value")
+    .eq("yacht_id", yachtId)
+    .eq("device_id", deviceId)
+    .eq("metric_key", metricKey)
+    .not("numeric_value", "is", null)
+    .gte("ts", start)
+    .lte("ts", end)
+    .order("ts", { ascending: true })
+    .limit(limit);
+
+  if (error) throw new Error(`Failed loading telemetry history: ${error.message}`);
+
+  return (data ?? [])
+    .filter((row) => typeof row.numeric_value === "number")
+    .map((row) => ({ ts: String(row.ts), value: Number(row.numeric_value) }));
+}
+
+export async function getTelemetryCurrent(params: {
+  yachtId: string;
+  deviceId: string;
+  metricKey: string;
+}): Promise<TelemetryCurrentPoint> {
+  if (useJsonlFallback()) return null;
+
+  const { yachtId, deviceId, metricKey } = params;
+  if (!yachtId || !deviceId || !metricKey || !isGraphableMetric(metricKey)) return null;
+
+  const supabase = getSupabaseClient();
+  const { data, error } = await supabase
+    .from("telemetry_current")
+    .select("source_timestamp,numeric_value")
+    .eq("yacht_id", yachtId)
+    .eq("device_id", deviceId)
+    .eq("metric_key", metricKey)
+    .not("numeric_value", "is", null)
+    .maybeSingle();
+
+  if (error) throw new Error(`Failed loading current telemetry: ${error.message}`);
+  if (!data || typeof data.numeric_value !== "number") return null;
+
+  return { ts: String(data.source_timestamp), value: Number(data.numeric_value) };
+}

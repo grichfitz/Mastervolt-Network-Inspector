@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<masterbuslogger>
+	<variables>
+	</variables>
+	<XMLversion>1</XMLversion>
+	<sampletimesec>5</sampletimesec>
+	<filesizeinhour>0</filesizeinhour>
+	<logsstringlistasvalue>0</logsstringlistasvalue>
+</masterbuslogger>

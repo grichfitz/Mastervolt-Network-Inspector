@@ -1,4 +1,5 @@
 import { notFound } from "next/navigation";
+import Link from "next/link";
 
 import Breadcrumbs from "@/components/Breadcrumbs";
 import DeviceCard from "@/components/DeviceCard";
@@ -31,16 +32,24 @@ export default async function YachtOverviewPage({ params }: { params: Promise<{ 
             Overview and onboard devices. Routes use stable bus IDs; labels are display-only.
           </p>
         </div>
-        <dl className="flex gap-4">
-          <div className="rounded-lg border border-slate-800 bg-slate-900/60 px-4 py-2 text-center">
-            <dt className="text-[11px] uppercase tracking-wide text-slate-500">Devices</dt>
-            <dd className="font-mono text-xl text-slate-100">{stats.deviceCount}</dd>
-          </div>
-          <div className="rounded-lg border border-slate-800 bg-slate-900/60 px-4 py-2 text-center">
-            <dt className="text-[11px] uppercase tracking-wide text-slate-500">Telemetry rows</dt>
-            <dd className="font-mono text-xl text-slate-100">{stats.telemetryVariableCount}</dd>
-          </div>
-        </dl>
+        <div className="flex flex-wrap items-center justify-end gap-3">
+          <Link
+            href={`/yachts/${encodeURIComponent(yacht.slug)}/telemetry`}
+            className="rounded-lg border border-cyan-700 bg-cyan-900/35 px-4 py-2 text-sm font-medium text-cyan-100 hover:bg-cyan-900/60"
+          >
+            Open telemetry graph
+          </Link>
+          <dl className="flex gap-4">
+            <div className="rounded-lg border border-slate-800 bg-slate-900/60 px-4 py-2 text-center">
+              <dt className="text-[11px] uppercase tracking-wide text-slate-500">Devices</dt>
+              <dd className="font-mono text-xl text-slate-100">{stats.deviceCount}</dd>
+            </div>
+            <div className="rounded-lg border border-slate-800 bg-slate-900/60 px-4 py-2 text-center">
+              <dt className="text-[11px] uppercase tracking-wide text-slate-500">Telemetry rows</dt>
+              <dd className="font-mono text-xl text-slate-100">{stats.telemetryVariableCount}</dd>
+            </div>
+          </dl>
+        </div>
       </div>
 
       <div id="devices" className="space-y-4 scroll-mt-24">

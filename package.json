@@ -12,7 +12,8 @@
     "@supabase/supabase-js": "^2.105.4",
     "next": "latest",
     "react": "latest",
-    "react-dom": "latest"
+    "react-dom": "latest",
+    "recharts": "^3.8.1"
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4.3.0",
